@@ -8,9 +8,6 @@
 
 
 #include "SkeletalModel.h"
-#include <glm/gtc/type_ptr.hpp>
-#include <glad/glad.h>
-#include "Sphere.h"
 
 
 ///=========================================================================================///
@@ -36,57 +33,33 @@ void SkeletalModel::loadSkeleton( const char* filename )
 
     // read line by line
     while (getline(file, line)) {
-        
-        string token;
-        float t;
-        int parent_idx;
-        
-        // temp arrays
-        float temp_transforms[3];
+
+        float x, y, z;
+        int index;
+
+        stringstream ss(line);
+        ss >> x >> y >> z >> index;
+
+        Joint* joint = new Joint;
+        joint->transform = glm::mat4(
+            1, 0, 0, x,
+            0, 1, 0, y,
+            0, 0, 1, z,
+            0, 0, 0, 1
+        );
             
-        // string searching
-        string delimiter = " ";
-        size_t pos = 0;
+        m_joints.push_back(joint);
 
-        // split line into 4 tokens
-        for (int i = 0; i < 4; i++) {
-
-            pos = line.find(delimiter);
-            token = line.substr(0, pos);  
-
-            if (i == 3) {
-                // index of parent, update m_joints[token] (parent joint) with child
-                // update m_joints[line_index] with transforms (current joint)
-                // if index is -1, set as root               
-
-                parent_idx = stoi(token);
-                glm::mat4 transforms = glm::make_mat4(temp_transforms);    
-                Joint* new_joint = new Joint();
-                m_joints.push_back(new_joint);
-                
-                // add to m_joints
-                m_joints[line_index]->transform = transforms;                 
-                
-                if (parent_idx == -1) {
-                    // no parent, set root joint
-                    m_rootJoint = m_joints[line_index];
-                }
-                else {
-                    // not root joint. Find parent and add current joint as child.
-                    m_joints[parent_idx]->children.push_back(m_joints[line_index]);
-                }                
-            }   
-            else {
-                // floats: joint translation relative to parent
-                t = atof(token.c_str());               
-                temp_transforms[i] = t;      
-
-            }
-            line.erase(0, pos + delimiter.length());            
+        // update children
+        if (index == -1) {
+            m_rootJoint = joint;
         }
-        line_index++;
+        else {
+            m_joints[index]->children.push_back(joint);
+        }
     }
-    file.close();
+
+   file.close();
 }
 
 
@@ -119,21 +92,13 @@ void SkeletalModel::computeJointTransforms( )
 // TODO: You will need to implement this recursive helper function to traverse the joint hierarchy for computing transformations of the joints
 void SkeletalModel::computeJointTransforms(Joint* joint, MatrixStack matrixStack)
 {
-   
     matrixStack.push(joint->transform);
     jointMatList.push_back(matrixStack.top());
 
-    for (int i = 0; i < joint->children.size(); i++) {
+    for (unsigned i = 0; i < joint->children.size(); i++) {
         computeJointTransforms(joint->children[i], matrixStack);
     }
-
-    //Sphere sphere(0.025f, 12, 12, true);
-    
     matrixStack.pop();
-  
-    
-    
-    
 }
 
 
@@ -150,29 +115,37 @@ void SkeletalModel::computeBoneTransforms( )
 // TODO: You will need to implement this recursive helper function to traverse the joint hierarchy for computing transformations of the bones
 void SkeletalModel::computeBoneTransforms(Joint* joint, MatrixStack matrixStack)
 {
-    /*Vector4f vectorDiff(joint->transform[12], joint->transform[13], joint->transform[14], 0);
-    Matrix4f translate_z = Matrix4f::translation(0, 0, 0.5);
-    float distance = vectorDiff.abs();
-    Matrix4f scale = Matrix4f::scaling(0.05f, 0.05f, distance);
-    Vector3f rnd(0, 0, 1);
-    Vector3f z = vectorDiff.normalized().xyz();
-    Vector3f y = Vector3f::cross(z, rnd).normalized();
-    Vector3f x = Vector3f::cross(y, z).normalized();
-    Matrix3f tempRot = Matrix3f(x, y, z);
-    Matrix4f rot = Matrix4f::identity();
-    rot.setSubmatrix3x3(0, 0, tempRot);
-
-    m_matrixStack.push(rot * scale * translate_z);
-    glLoadMatrixf(m_matrixStack.top());
-    glutSolidCube(1.0f);
-    m_matrixStack.pop();*/
-
     matrixStack.push(joint->transform);
-    boneMatList.push_back(matrixStack.top());
 
-    for (unsigned i = 0; i < joint->children.size(); i++) {
-        cout << joint->children.size() << endl;
-        computeBoneTransforms(joint->children[i], matrixStack);
+    if (joint->children.size() > 0) {
+        // joint has children
+        for (unsigned i = 0; i < joint->children.size(); i++) {
+
+            // get distance vector
+            glm::vec3 joint_pos = glm::transpose(joint->children[i]->transform)[3];
+
+            // Translate it in z such that the cylinder ranges from [-0.5, -0.5, 0] to[0.5, 0.5, 1].
+            glm::mat4 translate = glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, 0.5));
+
+            // Scale the cylinder so that it ranges from [-0.01, -0.01, 0] to[0.01, 0.01, d], 
+            // where d is the distance to the next joint in your recursion.
+            float d = glm::length(joint_pos);
+            glm::mat4 scale = glm::scale(glm::mat4(1.0f), glm::vec3(0.01f, 0.01f, d));
+
+            // Finally, you need to rotate the z - axis so that it is aligned with the direction to the parent joint :
+            glm::vec3 r(0, 0, 1);
+            glm::vec3 z = glm::normalize(joint_pos);
+            glm::vec3 y = glm::normalize(glm::cross(z, r));
+            glm::vec3 x = glm::normalize(glm::cross(y, z));  
+
+            glm::mat3 rot(x, y, z);
+            glm::mat4 rotate = glm::mat4(rot);
+           
+            glm::mat4 transform = glm::transpose(rotate * scale * translate) * matrixStack.top();
+            boneMatList.push_back(transform);
+
+            computeBoneTransforms(joint->children[i], matrixStack);
+        }
     }
     matrixStack.pop();
 }
