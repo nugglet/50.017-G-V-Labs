@@ -100,21 +100,40 @@ void scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
 //// TODO: fill this function to realize plane mapping
 void calcPlaneMapping(void)
 {
-
+    for (Vertex& vertex : myObject.vertices)
+    {
+        vertex.t[0] = vertex.v[0] + 0.5;
+        vertex.t[1] = vertex.v[1] + 0.5;
+    }
 }
 
 
 //// TODO: fill this function to realize cylindrical mapping
 void calcCylindricalMapping(void)
 {
+    for (Vertex& vertex : myObject.vertices)
+    {
+        float angle = atan2f(vertex.v[2], vertex.v[0]);
 
+        vertex.t[0] = (angle + PI) / (2 * PI);
+        vertex.t[1] = vertex.v[1] + 0.5;
+    }
 }
 
 
 //// TODO: fill this function to realize sphere mapping
 void calcSphereMapping(void)
 {
+    for (Vertex& vertex : myObject.vertices)
+    {
+      
+        float p = sqrtf(powf(vertex.v[0], 2) + powf(vertex.v[1], 2) + powf(vertex.v[2], 2));
+        float theta = atan2f(vertex.v[2], vertex.v[0]);
+        float phi = acosf(vertex.v[1] / p);
 
+        vertex.t[0] = (theta + PI) / (2 * PI);
+        vertex.t[1] = phi / PI;
+    }
 }
 
 
@@ -688,7 +707,7 @@ int main()
     // load image, create texture and generate mipmaps
     int width, height, nrChannels;
     //unsigned char *data = stbi_load("..\data\texture.png", &width, &height, &nrChannels, 0);
-    unsigned char* data = stbi_load("../data/texture.png", &width, &height, &nrChannels, 0);
+    unsigned char* data = stbi_load("./data/texture.png", &width, &height, &nrChannels, 0);
 
     if (data)
     {
